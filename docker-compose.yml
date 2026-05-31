@@ -1,1 +1,14 @@
-
+services:
+  ac-db:
+    image: mariadb:10.6
+    container_name: ac-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: azeroth
+      MYSQL_DATABASE: acore_world
+      MYSQL_USER: acore
+      MYSQL_PASSWORD: acore
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./docker/db:/var/lib/mysql
