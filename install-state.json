@@ -1,1 +1,4 @@
-
+{
+  "stage": "modules",
+  "completed": ["docker", "core", "modules"]
+}
