@@ -1,97 +1,116 @@
-$ErrorActionPreference = "Stop"
+Add-Type -AssemblyName PresentationFramework
 
-Write-Host "=== AzerothCore Playerbots Installer ==="
+[xml]$xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        Title="AzerothCore Installer" Height="520" Width="720"
+        WindowStartupLocation="CenterScreen">
 
-# Load config
-$manifest = Get-Content ".\manifest.json" | ConvertFrom-Json
+    <Grid Margin="10">
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$serverDir = Join-Path $root "server"
+        <TextBlock Name="StatusText"
+                   Text="Ready"
+                   VerticalAlignment="Top"
+                   FontSize="14"
+                   Height="30"/>
 
-# -------------------------
-# 1. Preconditions
-# -------------------------
-Write-Host "Checking prerequisites..."
+        <ProgressBar Name="Progress"
+                     Height="20"
+                     Margin="0,40,0,0"
+                     Minimum="0" Maximum="100"/>
 
-if (!(Get-Command git -ErrorAction SilentlyContinue)) {
-    throw "Git is not installed."
+        <TextBox Name="LogBox"
+                 Margin="0,80,0,60"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"/>
+
+        <Button Name="StartButton"
+                Content="Install AzerothCore"
+                Height="35"
+                Width="200"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"/>
+    </Grid>
+</Window>
+"@
+
+$reader = New-Object System.Xml.XmlNodeReader $xaml
+$window = [Windows.Markup.XamlReader]::Load($reader)
+
+$StatusText = $window.FindName("StatusText")
+$Progress = $window.FindName("Progress")
+$LogBox = $window.FindName("LogBox")
+$StartButton = $window.FindName("StartButton")
+
+function Log($msg) {
+    $LogBox.AppendText("`n$msg")
+    $LogBox.ScrollToEnd()
 }
 
-if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
-    throw "Docker is not installed."
-}
-
-if (!(Test-Path $manifest.client_path)) {
-    throw "WoW client not found at: $($manifest.client_path)"
-}
-
-# -------------------------
-# 2. Start DB
-# -------------------------
-Write-Host "Starting MariaDB..."
-docker compose up -d
-
-Start-Sleep -Seconds 10
-
-# -------------------------
-# 3. Clone Core
-# -------------------------
-Write-Host "Cloning AzerothCore Playerbots fork..."
-
-if (!(Test-Path "$serverDir\core")) {
-    git clone $manifest.core.repo "$serverDir\core"
+function Set-Stage($text, $percent) {
+    $StatusText.Text = $text
+    $Progress.Value = $percent
+    Log $text
 }
 
 # -------------------------
-# 4. Modules
+# INSTALL PIPELINE
 # -------------------------
-Write-Host "Installing modules..."
+$StartButton.Add_Click({
 
-$modulesPath = "$serverDir\core\modules"
+    try {
+        Set-Stage "Checking prerequisites..." 5
 
-if (!(Test-Path $modulesPath)) {
-    New-Item -ItemType Directory -Path $modulesPath | Out-Null
-}
+        if (!(Get-Command git -ErrorAction SilentlyContinue)) {
+            throw "Git missing"
+        }
 
-foreach ($mod in $manifest.modules.PSObject.Properties) {
-    $target = "$modulesPath\$($mod.Name)"
+        if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
+            throw "Docker missing"
+        }
 
-    if (!(Test-Path $target)) {
-        git clone $mod.Value $target
+        Set-Stage "Starting database (Docker)..." 10
+        docker compose up -d
+        Start-Sleep 10
+
+        Set-Stage "Cloning core..." 25
+        if (!(Test-Path ".\server\core")) {
+            git clone $manifest.core.repo ".\server\core"
+        }
+
+        Set-Stage "Installing modules..." 40
+        $modulesPath = ".\server\core\modules"
+
+        foreach ($m in $manifest.modules.PSObject.Properties) {
+            $target = "$modulesPath\$($m.Name)"
+            if (!(Test-Path $target)) {
+                git clone $m.Value $target
+            }
+        }
+
+        Set-Stage "Building server (this takes time)..." 60
+
+        cd ".\server\core"
+        if (!(Test-Path "build")) {
+            mkdir build
+        }
+
+        cd build
+        cmake .. -DTOOLS=1 -DSCRIPTS=dynamic -DMODULES=static
+        cmake --build . --config Release
+
+        Set-Stage "Finalizing setup..." 85
+
+        Set-Stage "Completed successfully" 100
+
+        [System.Windows.MessageBox]::Show("Install complete! Use Play-WoW.bat")
+
+    } catch {
+        [System.Windows.MessageBox]::Show("ERROR: $_")
+        Log "ERROR: $_"
     }
-}
 
-# -------------------------
-# 5. Build
-# -------------------------
-Write-Host "Building core (this will take a while)..."
+})
 
-cd "$serverDir\core"
-
-mkdir build -Force | Out-Null
-cd build
-
-cmake .. -DTOOLS=1 -DSCRIPTS=dynamic -DMODULES=static
-
-cmake --build . --config Release
-
-# -------------------------
-# 6. Copy DB configs
-# -------------------------
-Write-Host "Preparing configs..."
-
-cd $root
-
-# -------------------------
-# 7. Client extraction reminder
-# -------------------------
-Write-Host ""
-Write-Host "IMPORTANT: Run map extraction tools from:"
-Write-Host $manifest.client_path
-Write-Host ""
-
-# -------------------------
-# 8. Done
-# -------------------------
-Write-Host "INSTALL COMPLETE"
-Write-Host "Use Play-WoW.bat to start server"
+$window.ShowDialog() | Out-Null
