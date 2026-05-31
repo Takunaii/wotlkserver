@@ -1,1 +1,17 @@
-
+{
+  "core": {
+    "repo": "https://github.com/mod-playerbots/azerothcore-wotlk.git",
+    "branch": "master"
+  },
+  "modules": {
+    "playerbots": "https://github.com/mod-playerbots/mod-playerbots.git",
+    "ahbot": "https://github.com/azerothcore/mod-ah-bot.git",
+    "transmog": "https://github.com/azerothcore/mod-transmog.git",
+    "autolearn": "https://github.com/azerothcore/mod-autolearn.git",
+    "solocraft": "https://github.com/azerothcore/mod-solocraft.git"
+  },
+  "bot_config": {
+    "target_bots": 1000
+  },
+  "client_path": "C:\\Users\\User\\Documents\\WoTLK 3.3.5a"
+}
